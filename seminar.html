@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Top-K Recommendation Engine | Max Heap + Frequency Indexing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #050508;
+    --surface: #0d0d14;
+    --surface2: #13131f;
+    --border: rgba(255,255,255,0.07);
+    --cyan: #00f5ff;
+    --purple: #a855f7;
+    --pink: #f472b6;
+    --green: #00ff88;
+    --text: #e2e8f0;
+    --muted: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    overflow-x: hidden;
+  }
+  .font-syne { font-family: 'Syne', sans-serif; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--purple); border-radius: 4px; }
+
+  /* Canvas bg */
+  #hero-canvas { position: absolute; inset: 0; z-index: 0; }
+
+  /* Neon text */
+  .neon-cyan { color: var(--cyan); text-shadow: 0 0 20px var(--cyan), 0 0 40px rgba(0,245,255,0.3); }
+  .neon-purple { color: var(--purple); text-shadow: 0 0 20px var(--purple); }
+  .neon-green { color: var(--green); text-shadow: 0 0 20px var(--green); }
+
+  /* Gradient text */
+  .grad-text {
+    background: linear-gradient(135deg, var(--cyan) 0%, var(--purple) 50%, var(--pink) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Glass card */
+  .glass {
+    background: rgba(13,13,20,0.7);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+  .glass:hover { border-color: rgba(168,85,247,0.3); }
+
+  /* Glow border */
+  .glow-border {
+    position: relative;
+  }
+  .glow-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--cyan), var(--purple), var(--pink));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Animated badge */
+  .badge-animate {
+    animation: badgePulse 2s ease-in-out infinite;
+  }
+  @keyframes badgePulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,245,255,0.4); }
+    50% { transform: scale(1.03); box-shadow: 0 0 0 8px rgba(0,245,255,0); }
+  }
+
+  /* CTA button */
+  .btn-primary {
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    color: #000;
+    font-weight: 700;
+    padding: 12px 28px;
+    border-radius: 50px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: 'Syne', sans-serif;
+    letter-spacing: 0.5px;
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,245,255,0.4); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+    font-weight: 600;
+    padding: 11px 28px;
+    border-radius: 50px;
+    border: 1px solid rgba(255,255,255,0.15);
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: 'Syne', sans-serif;
+  }
+  .btn-ghost:hover { border-color: var(--cyan); color: var(--cyan); transform: translateY(-2px); }
+
+  /* Section reveal */
+  .reveal { opacity: 0; transform: translateY(30px); transition: all 0.7s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .reveal-left { opacity: 0; transform: translateX(-30px); transition: all 0.7s ease; }
+  .reveal-left.visible { opacity: 1; transform: translateX(0); }
+  .reveal-right { opacity: 0; transform: translateX(30px); transition: all 0.7s ease; }
+  .reveal-right.visible { opacity: 1; transform: translateX(0); }
+
+  /* Nav */
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; backdrop-filter: blur(20px); background: rgba(5,5,8,0.8); border-bottom: 1px solid var(--border); }
+
+  /* Heap tree node */
+  .heap-node {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+  }
+  .heap-node.highlight { animation: nodeHighlight 0.5s ease; }
+  @keyframes nodeHighlight {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+
+  /* Frequency bar */
+  .freq-bar {
+    height: 8px;
+    border-radius: 4px;
+    transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Top-K card */
+  .topk-card {
+    transition: all 0.3s;
+    animation: slideIn 0.4s ease forwards;
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .topk-card:hover { transform: translateX(6px); }
+
+  /* Stat counter */
+  .stat-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 3rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Architecture block */
+  .arch-block {
+    cursor: pointer;
+    transition: all 0.3s;
+    border-radius: 12px;
+  }
+  .arch-block:hover { transform: scale(1.04); filter: brightness(1.2); }
+
+  /* Step connector */
+  .step-line {
+    background: linear-gradient(180deg, var(--cyan), var(--purple));
+    width: 2px;
+    flex-shrink: 0;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(8px);
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  /* Hamburger */
+  .hamburger span {
+    display: block;
+    width: 22px; height: 2px;
+    background: var(--text);
+    border-radius: 2px;
+    transition: all 0.3s;
+    margin: 4px 0;
+  }
+
+  /* Heap array cell */
+  .heap-cell {
+    min-width: 48px; height: 48px;
+    border: 1px solid rgba(0,245,255,0.3);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    transition: all 0.4s;
+    background: rgba(0,245,255,0.05);
+    flex-direction: column;
+    gap: 2px;
+  }
+  .heap-cell.active {
+    border-color: var(--cyan);
+    background: rgba(0,245,255,0.15);
+    box-shadow: 0 0 12px rgba(0,245,255,0.3);
+  }
+
+  /* Glow dot */
+  .glow-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    animation: dotPulse 2s ease-in-out infinite;
+  }
+  @keyframes dotPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  /* SVG arrow animation */
+  .flow-arrow { animation: flowPulse 1.5s ease-in-out infinite; }
+  @keyframes flowPulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* Tooltip */
+  [data-tooltip] { position: relative; }
+  [data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%; transform: translateX(-50%);
+    background: rgba(13,13,20,0.95);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  /* Noise texture overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  /* Mobile menu */
+  #mobile-menu { display: none; }
+  #mobile-menu.open { display: block; }
+
+  @media (max-width: 768px) {
+    .stat-num { font-size: 2rem; }
+    .hero-title { font-size: 2.4rem !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
+    <span class="font-syne font-bold text-sm tracking-widest grad-text">TOPK·ENGINE</span>
+    <div class="hidden md:flex items-center gap-6 text-sm text-gray-400">
+      <a href="#abstract" class="hover:text-cyan-400 transition-colors">Abstract</a>
+      <a href="#problem" class="hover:text-cyan-400 transition-colors">Problem</a>
+      <a href="#methodology" class="hover:text-cyan-400 transition-colors">Methodology</a>
+      <a href="#architecture" class="hover:text-cyan-400 transition-colors">Architecture</a>
+      <a href="#demo" class="hover:text-cyan-400 transition-colors">Live Demo</a>
+      <a href="#performance" class="hover:text-cyan-400 transition-colors">Performance</a>
+    </div>
+    <button class="md:hidden hamburger flex flex-col justify-center" id="ham-btn" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div id="mobile-menu" class="md:hidden px-4 pb-4 pt-2 border-t border-white/5">
+    <div class="flex flex-col gap-3 text-sm text-gray-400">
+      <a href="#abstract" class="hover:text-cyan-400">Abstract</a>
+      <a href="#problem" class="hover:text-cyan-400">Problem</a>
+      <a href="#methodology" class="hover:text-cyan-400">Methodology</a>
+      <a href="#architecture" class="hover:text-cyan-400">Architecture</a>
+      <a href="#demo" class="hover:text-cyan-400">Live Demo</a>
+      <a href="#performance" class="hover:text-cyan-400">Performance</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="relative min-h-screen flex items-center justify-center overflow-hidden pt-14">
+  <canvas id="hero-canvas"></canvas>
+  <div class="relative z-10 text-center px-4 max-w-5xl mx-auto">
+    <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-cyan-500/30 bg-cyan-500/5 mb-6 badge-animate">
+      <span class="glow-dot bg-cyan-400"></span>
+      <span class="text-cyan-400 font-mono text-xs tracking-widest">REAL-TIME · SCALABLE · INTELLIGENT 🔥</span>
+    </div>
+    <h1 class="hero-title font-syne font-black leading-none mb-4" style="font-size:clamp(2.4rem,6vw,5.5rem)">
+      <span class="grad-text">Priority-Based</span><br/>
+      <span class="text-white">Top-K Recommendation</span><br/>
+      <span class="neon-cyan">Engine</span>
+    </h1>
+    <p class="text-xl md:text-2xl font-mono mb-3 text-purple-400 tracking-tight">Max Heap + Frequency Indexing</p>
+    <p class="text-gray-400 text-lg mb-10 max-w-2xl mx-auto">Real-time, scalable, and hyper-personalized recommendations powered by priority queues and frequency analytics.</p>
+    <div class="flex flex-wrap gap-4 justify-center">
+      <button class="btn-primary" onclick="document.getElementById('demo').scrollIntoView({behavior:'smooth'})">🚀 Live Demo</button>
+      <button class="btn-ghost" onclick="document.getElementById('abstract').scrollIntoView({behavior:'smooth'})">Explore the System</button>
+    </div>
+    <div class="mt-16 grid grid-cols-3 gap-6 max-w-md mx-auto">
+      <div class="text-center"><div class="text-2xl font-syne font-black neon-cyan">O(log N)</div><div class="text-xs text-gray-500 mt-1">Insertion</div></div>
+      <div class="text-center"><div class="text-2xl font-syne font-black neon-purple">O(K log N)</div><div class="text-xs text-gray-500 mt-1">Top-K Retrieval</div></div>
+      <div class="text-center"><div class="text-2xl font-syne font-black neon-green">O(1)</div><div class="text-xs text-gray-500 mt-1">Freq Lookup</div></div>
+    </div>
+  </div>
+  <!-- Scroll indicator -->
+  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-50">
+    <span class="text-xs font-mono text-gray-500 tracking-widest">SCROLL</span>
+    <div style="width:1px;height:40px;background:linear-gradient(180deg,rgba(0,245,255,0.8),transparent)"></div>
+  </div>
+</section>
+
+<!-- ABSTRACT & INTRO -->
+<section id="abstract" class="py-24 px-4">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="font-mono text-xs text-purple-400 tracking-widest">01 — OVERVIEW</span>
+      <h2 class="font-syne font-bold text-3xl md:text-4xl mt-2">Abstract & Introduction</h2>
+    </div>
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="glass p-8 glow-border reveal-left" style="transition-delay:0.1s">
+        <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00f5ff" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        </div>
+        <h3 class="font-syne font-bold text-xl mb-3 text-white">Abstract</h3>
+        <p class="text-gray-400 text-sm leading-relaxed">This system presents a novel approach to real-time recommendation by combining a <span class="text-cyan-400">Max Heap</span> data structure with <span class="text-purple-400">Frequency Indexing</span>. The engine dynamically maintains item popularity scores, enabling efficient Top-K retrieval with sub-millisecond response times, addressing core challenges in modern recommendation pipelines.</p>
+      </div>
+      <div class="glass p-8 glow-border reveal-right" style="transition-delay:0.2s">
+        <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        </div>
+        <h3 class="font-syne font-bold text-xl mb-3 text-white">Introduction</h3>
+        <p class="text-gray-400 text-sm leading-relaxed">Traditional recommendation systems struggle with scalability and real-time constraints. By leveraging a <span class="text-purple-400">priority-driven heap structure</span>, items are ordered by a composite score of user engagement frequency and dynamic weights. The frequency index acts as a live lookup table, enabling constant-time reads during heap construction.</p>
+      </div>
+      <div class="glass p-8 reveal" style="transition-delay:0.3s;grid-column:1/-1">
+        <h3 class="font-syne font-bold text-lg mb-4 text-white flex items-center gap-2">
+          <span class="neon-cyan">⚡</span> Key Contributions
+        </h3>
+        <div class="grid sm:grid-cols-3 gap-4">
+          <div class="bg-white/3 rounded-xl p-4 border border-white/5">
+            <div class="text-cyan-400 font-mono text-xs mb-1">01</div>
+            <div class="text-sm font-medium">Dynamic Priority Scoring</div>
+            <div class="text-xs text-gray-500 mt-1">Composite score = frequency × recency weight</div>
+          </div>
+          <div class="bg-white/3 rounded-xl p-4 border border-white/5">
+            <div class="text-purple-400 font-mono text-xs mb-1">02</div>
+            <div class="text-sm font-medium">O(log N) Heap Operations</div>
+            <div class="text-xs text-gray-500 mt-1">Insert, delete, and heapify in logarithmic time</div>
+          </div>
+          <div class="bg-white/3 rounded-xl p-4 border border-white/5">
+            <div class="text-pink-400 font-mono text-xs mb-1">03</div>
+            <div class="text-sm font-medium">Real-Time Frequency Map</div>
+            <div class="text-xs text-gray-500 mt-1">HashMap-backed O(1) frequency lookup</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEM STATEMENT -->
+<section id="problem" class="py-24 px-4 relative">
+  <div class="absolute inset-0 bg-gradient-to-b from-transparent via-purple-900/5 to-transparent pointer-events-none"></div>
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="font-mono text-xs text-purple-400 tracking-widest">02 — PROBLEM STATEMENT</span>
+      <h2 class="font-syne font-bold text-3xl md:text-4xl mt-2">Challenges We Solve</h2>
+    </div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="glass p-6 reveal" style="transition-delay:0.1s">
+        <div class="text-3xl mb-3">📈</div>
+        <h3 class="font-syne font-bold text-base mb-2 text-white">Scalability</h3>
+        <p class="text-gray-400 text-xs leading-relaxed">Traditional systems fail at scale. As item catalog grows to millions, naive sorting becomes O(N log N) per query — unacceptable for live systems.</p>
+        <div class="mt-3 text-xs font-mono text-red-400">❌ O(N log N) sorting</div>
+        <div class="text-xs font-mono text-green-400">✅ O(log N) heap ops</div>
+      </div>
+      <div class="glass p-6 reveal" style="transition-delay:0.2s">
+        <div class="text-3xl mb-3">⚡</div>
+        <h3 class="font-syne font-bold text-base mb-2 text-white">Real-Time Updates</h3>
+        <p class="text-gray-400 text-xs leading-relaxed">User interaction frequencies change every second. Systems need live updates without full recomputation of rankings.</p>
+        <div class="mt-3 text-xs font-mono text-red-400">❌ Batch recompute</div>
+        <div class="text-xs font-mono text-green-400">✅ Incremental heapify</div>
+      </div>
+      <div class="glass p-6 reveal" style="transition-delay:0.3s">
+        <div class="text-3xl mb-3">🎯</div>
+        <h3 class="font-syne font-bold text-base mb-2 text-white">Dynamic Priority</h3>
+        <p class="text-gray-400 text-xs leading-relaxed">Static rankings don't reflect real-world shifts in item popularity or trending content. Priority must be computed dynamically.</p>
+        <div class="mt-3 text-xs font-mono text-red-400">❌ Static rankings</div>
+        <div class="text-xs font-mono text-green-400">✅ Dynamic score heap</div>
+      </div>
+      <div class="glass p-6 reveal" style="transition-delay:0.4s">
+        <div class="text-3xl mb-3">💾</div>
+        <h3 class="font-syne font-bold text-base mb-2 text-white">Memory Overhead</h3>
+        <p class="text-gray-400 text-xs leading-relaxed">Storing full sorted arrays wastes memory. Maintaining only the heap of size K with a frequency index reduces footprint dramatically.</p>
+        <div class="mt-3 text-xs font-mono text-red-400">❌ Full array sort</div>
+        <div class="text-xs font-mono text-green-400">✅ O(K) heap space</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- METHODOLOGY -->
+<section id="methodology" class="py-24 px-4">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="font-mono text-xs text-cyan-400 tracking-widest">03 — METHODOLOGY</span>
+      <h2 class="font-syne font-bold text-3xl md:text-4xl mt-2">System Pipeline</h2>
+    </div>
+    <div class="relative">
+      <!-- Steps -->
+      <div class="flex flex-col gap-0">
+        <!-- Step 1 -->
+        <div class="flex gap-6 reveal" style="transition-delay:0.1s">
+          <div class="flex flex-col items-center">
+            <div class="w-12 h-12 rounded-full bg-cyan-500/20 border-2 border-cyan-500/50 flex items-center justify-center font-syne font-bold text-cyan-400 text-sm flex-shrink-0">01</div>
+            <div class="step-line flex-1 my-2"></div>
+          </div>
+          <div class="glass p-6 mb-4 flex-1">
+            <h3 class="font-syne font-bold text-lg text-white mb-2">Data Ingestion & Preprocessing</h3>
+            <p class="text-gray-400 text-sm mb-3">Raw interaction events (clicks, purchases, views) are streamed in. Each event carries an <code class="font-mono text-cyan-400 text-xs bg-cyan-400/10 px-1 rounded">item_id</code>, <code class="font-mono text-cyan-400 text-xs bg-cyan-400/10 px-1 rounded">user_id</code>, and <code class="font-mono text-cyan-400 text-xs bg-cyan-400/10 px-1 rounded">timestamp</code>.</p>
+            <div class="bg-black/40 rounded-lg p-3 font-mono text-xs text-green-400">
+              <span class="text-gray-500">// Event schema</span><br/>
+              event = &#123; item_id: "prod_42", weight: 1.5, ts: Date.now() &#125;
+            </div>
+          </div>
+        </div>
+        <!-- Step 2 -->
+        <div class="flex gap-6 reveal" style="transition-delay:0.2s">
+          <div class="flex flex-col items-center">
+            <div class="w-12 h-12 rounded-full bg-purple-500/20 border-2 border-purple-500/50 flex items-center justify-center font-syne font-bold text-purple-400 text-sm flex-shrink-0">02</div>
+            <div class="step-line flex-1 my-2"></div>
+          </div>
+          <div class="glass p-6 mb-4 flex-1">
+            <h3 class="font-syne font-bold text-lg text-white mb-2">Frequency Indexing</h3>
+            <p class="text-gray-400 text-sm mb-3">A HashMap maintains cumulative frequency scores per item. Each event increments the score. Lookup is O(1), making it ideal for real-time score feeding into the heap.</p>
+            <div class="bg-black/40 rounded-lg p-3 font-mono text-xs text-purple-400">
+              <span class="text-gray-500">// Frequency map update</span><br/>
+              freqMap[item_id] = (freqMap[item_id] || 0) + weight;<br/>
+              <span class="text-gray-500">// O(1) lookup</span>
+            </div>
+          </div>
+        </div>
+        <!-- Step 3 -->
+        <div class="flex gap-6 reveal" style="transition-delay:0.3s">
+          <div class="flex flex-col items-center">
+            <div class="w-12 h-12 rounded-full bg-pink-500/20 border-2 border-pink-500/50 flex items-center justify-center font-syne font-bold text-pink-400 text-sm flex-shrink-0">03</div>
+            <div class="step-line flex-1 my-2"></div>
+          </div>
+          <div class="glass p-6 mb-4 flex-1">
+            <h3 class="font-syne font-bold text-lg text-white mb-2">Max Heap Construction</h3>
+            <p class="text-gray-400 text-sm mb-3">Frequency scores are fed into a Max Heap. The heap property ensures the highest-priority item is always at the root. Heapify maintains order in O(log N) on each update.</p>
+            <div class="bg-black/40 rounded-lg p-3 font-mono text-xs text-pink-400">
+              <span class="text-gray-500">// Heapify up after insert</span><br/>
+              while (i > 0 &amp;&amp; heap[parent(i)] &lt; heap[i]) &#123;<br/>
+              &nbsp;&nbsp;swap(i, parent(i)); i = parent(i);<br/>&#125;
+            </div>
+          </div>
+        </div>
+        <!-- Step 4 -->
+        <div class="flex gap-6 reveal" style="transition-delay:0.4s">
+          <div class="flex flex-col items-center">
+            <div class="w-12 h-12 rounded-full bg-green-500/20 border-2 border-green-500/50 flex items-center justify-center font-syne font-bold text-green-400 text-sm flex-shrink-0">04</div>
+          </div>
+          <div class="glass p-6 flex-1">
+            <h3 class="font-syne font-bold text-lg text-white mb-2">Top-K Retrieval</h3>
+            <p class="text-gray-400 text-sm mb-3">Extract max K times from the heap to get the Top-K items. Total complexity: O(K log N). Results are returned as a ranked list with scores for rendering.</p>
+            <div class="bg-black/40 rounded-lg p-3 font-mono text-xs text-green-400">
+              <span class="text-gray-500">// Top-K extraction</span><br/>
+              const result = [];<br/>
+              for (let i = 0; i &lt; K; i++) result.push(heap.extractMax());
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section id="architecture" class="py-24 px-4 relative">
+  <div class="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-900/5 to-transparent pointer-events-none"></div>
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="font-mono text-xs text-pink-400 tracking-widest">04 — SYSTEM ARCHITECTURE</span>
+      <h2 class="font-syne font-bold text-3xl md:text-4xl mt-2">Interactive Architecture</h2>
+      <p class="text-gray-500 text-sm mt-2">Click any block to explore details</p>
+    </div>
+    <div class="glass p-6 md:p-10 reveal">
+      <svg id="arch-svg" viewBox="0 0 800 320" class="w-full" style="max-height:400px">
+        <!-- Background grid -->
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill="rgba(0,245,255,0.7)"/>
+          </marker>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <rect width="800" height="320" fill="url(#grid)"/>
+        <!-- Flow arrows -->
+        <line x1="160" y1="160" x2="215" y2="160" stroke="rgba(0,245,255,0.5)" stroke-width="2" marker-end="url(#arrow)" class="flow-arrow"/>
+        <line x1="350" y1="160" x2="405" y2="160" stroke="rgba(0,245,255,0.5)" stroke-width="2" marker-end="url(#arrow)" class="flow-arrow" style="animation-delay:0.3s"/>
+        <line x1="540" y1="160" x2="595" y2="160" stroke="rgba(0,245,255,0.5)" stroke-width="2" marker-end="url(#arrow)" class="flow-arrow" style="animation-delay:0.6s"/>
+        <!-- Labels on arrows -->
+        <text x="183" y="152" fill="rgba(0,245,255,0.6)" font-size="8" font-family="JetBrains Mono" text-anchor="middle">events</text>
+        <text x="375" y="152" fill="rgba(0,245,255,0.6)" font-size="8" font-family="JetBrains Mono" text-anchor="middle">scores</text>
+        <text x="565" y="152" fill="rgba(0,245,255,0.6)" font-size="8" font-family="JetBrains Mono" text-anchor="middle">priority</text>
+
+        <!-- Block 1: Data Ingestion -->
+        <g class="arch-block" onclick="showArchModal('ingestion')" transform="translate(20,100)">
+          <rect width="140" height="120" rx="12" fill="rgba(0,245,255,0.05)" stroke="rgba(0,245,255,0.4)" stroke-width="1.5" filter="url(#glow)"/>
+          <text x="70" y="28" fill="#00f5ff" font-size="20" text-anchor="middle">📥</text>
+          <text x="70" y="52" fill="#e2e8f0" font-size="11" font-family="Syne" font-weight="700" text-anchor="middle">Data Ingestion</text>
+          <text x="70" y="70" fill="#64748b" font-size="8" font-family="JetBrains Mono" text-anchor="middle">Stream Processing</text>
+          <rect x="20" y="80" width="100" height="20" rx="4" fill="rgba(0,245,255,0.1)"/>
+          <text x="70" y="93" fill="#00f5ff" font-size="8" font-family="JetBrains Mono" text-anchor="middle">item_id, weight, ts</text>
+        </g>
+
+        <!-- Block 2: Frequency Index -->
+        <g class="arch-block" onclick="showArchModal('frequency')" transform="translate(215,80)">
+          <rect width="135" height="160" rx="12" fill="rgba(168,85,247,0.05)" stroke="rgba(168,85,247,0.4)" stroke-width="1.5" filter="url(#glow)"/>
+          <text x="67" y="28" fill="#a855f7" font-size="20" text-anchor="middle">🗂️</text>
+          <text x="67" y="52" fill="#e2e8f0" font-size="11" font-family="Syne" font-weight="700" text-anchor="middle">Freq. Index</text>
+          <text x="67" y="68" fill="#64748b" font-size="8" font-family="JetBrains Mono" text-anchor="middle">HashMap O(1)</text>
+          <rect x="10" y="78" width="115" height="16" rx="3" fill="rgba(168,85,247,0.15)"/>
+          <text x="67" y="89" fill="#a855f7" font-size="8" font-family="JetBrains Mono" text-anchor="middle">item_42 → 87.5</text>
+          <rect x="10" y="98" width="115" height="16" rx="3" fill="rgba(168,85,247,0.08)"/>
+          <text x="67" y="109" fill="#a855f7" font-size="8" font-family="JetBrains Mono" text-anchor="middle">item_13 → 64.2</text>
+          <rect x="10" y="118" width="115" height="16" rx="3" fill="rgba(168,85,247,0.05)"/>
+          <text x="67" y="129" fill="#a855f7" font-size="8" font-family="JetBrains Mono" text-anchor="middle">item_07 → 51.0</text>
+        </g>
+
+        <!-- Block 3: Max Heap -->
+        <g class="arch-block" onclick="showArchModal('maxheap')" transform="translate(405,70)">
+          <rect width="135" height="180" rx="12" fill="rgba(244,114,182,0.05)" stroke="rgba(244,114,182,0.4)" stroke-width="1.5" filter="url(#glow)"/>
+          <text x="67" y="28" fill="#f472b6" font-size="20" text-anchor="middle">🔺</text>
+          <text x="67" y="52" fill="#e2e8f0" font-size="11" font-family="Syne" font-weight="700" text-anchor="middle">Max Heap</text>
+          <text x="67" y="68" fill="#64748b" font-size="8" font-family="JetBrains Mono" text-anchor="middle">O(log N) ops</text>
+          <!-- Mini tree vis -->
+          <circle cx="67" cy="95" r="14" fill="rgba(244,114,182,0.2)" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="67" y="99" fill="#f472b6" font-size="9" font-family="JetBrains Mono" text-anchor="middle">87.5</text>
+          <circle cx="42" cy="128" r="12" fill="rgba(244,114,182,0.1)" stroke="#f472b6" stroke-width="1"/>
+          <text x="42" y="132" fill="#f472b6" font-size="8" font-family="JetBrains Mono" text-anchor="middle">64.2</text>
+          <circle cx="92" cy="128" r="12" fill="rgba(244,114,182,0.1)" stroke="#f472b6" stroke-width="1"/>
+          <text x="92" y="132" fill="#f472b6" font-size="8" font-family="JetBrains Mono" text-anchor="middle">51.0</text>
+          <line x1="57" y1="107" x2="47" y2="116" stroke="rgba(244,114,182,0.3)" stroke-width="1"/>
+          <line x1="77" y1="107" x2="87" y2="116" stroke="rgba(244,114,182,0.3)" stroke-width="1"/>
+          <text x="67" y="168" fill="#64748b" font-size="7" font-family="JetBrains Mono" text-anchor="middle">heapify on update</text>
+        </g>
+
+        <!-- Block 4: Top-K Output -->
+        <g class="arch-block" onclick="showArchModal('topk')" transform="translate(595,90)">
+          <rect width="150" height="140" rx="12" fill="rgba(0,255,136,0.05)" stroke="rgba(0,255,136,0.4)" stroke-width="1.5" filter="url(#glow)"/>
+          <text x="75" y="28" fill="#00ff88" font-size="20" text-anchor="middle">🏆</text>
+          <text x="75" y="50" fill="#e2e8f0" font-size="11" font-family="Syne" font-weight="700" text-anchor="middle">Top-K Output</text>
+          <text x="75" y="66" fill="#64748b" font-size="8" font-family="JetBrains Mono" text-anchor="middle">O(K log N)</text>
+          <text x="20" y="85" fill="#00ff88" font-size="9" font-family="JetBrains Mono">#1 item_42 — 87.5</text>
+          <text x="20" y="100" fill="#00cc6e" font-size="9" font-family="JetBrains Mono">#2 item_13 — 64.2</text>
+          <text x="20" y="115" fill="#009952" font-size="9" font-family="JetBrains Mono">#3 item_07 — 51.0</text>
+          <text x="20" y="130" fill="#006635" font-size="9" font-family="JetBrains Mono">#K  ...  — ...</text>
+        </g>
+
+        <!-- Title -->
+        <text x="400" y="295" fill="rgba(100,116,139,0.6)" font-size="9" font-family="JetBrains Mono" text-anchor="middle">Click any block to explore details + pseudo-code</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- LIVE DEMO -->
+<section id="demo" class="py-24 px-4">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="font-mono text-xs text-green-400 tracking-widest">05 — INTERACTIVE DEMO</span>
+      <h2 class="font-syne font-bold text-3xl md:text-4xl mt-2">Live Recommendation Engine</h2>
+      <p class="text-gray-500 text-sm mt-2">Real JavaScript MaxHeap — watch heapify in real-time</p>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6">
+      <!-- Controls Panel -->
+      <div class="flex flex-col gap-4">
+        <!-- K Slider -->
+        <div class="glass p-5">
+          <h3 class="font-syne font-bold text-sm mb-3 text-white">Top-K Value</h3>
+          <div class="flex items-center gap-3">
+            <input type="range" id="k-slider" min="1" max="15" value="5" class="flex-1 accent-cyan-400" oninput="updateK(this.value)"/>
+            <span class="font-mono text-cyan-400 font-bold text-lg w-8 text-right" id="k-display">5</span>
+          </div>
+          <div class="text-xs text-gray-500 mt-1">Showing Top-<span id="k-label">5</span> recommendations</div>
+        </div>
+
+        <!-- Add Item -->
+        <div class="glass p-5">
+          <h3 class="font-syne font-bold text-sm mb-3 text-white">Add Custom Item</h3>
+          <input id="custom-item" type="text" placeholder="e.g. Sony WH-1000XM5" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-cyan-500/50 mb-2" maxlength="28"/>
+          <input id="custom-score" type="number" placeholder="Frequency score (1-100)" min="1" max="100" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-purple-500/50 mb-3"/>
+          <button class="btn-primary w-full text-sm" onclick="addCustomItem()">+ Add to Engine</button>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="glass p-5 flex flex-col gap-2">
+          <h3 class="font-syne font-bold text-sm mb-1 text-white">Engine Controls</h3>
+          <button class="btn-ghost text-sm" onclick="ingestRandom()">⚡ Ingest Random Items</button>
+          <button class="btn-ghost text-sm" onclick="updateFrequencies()">🔄 Update Frequencies</button>
+          <button class="btn-ghost text-sm" onclick="resetEngine()">🗑️ Reset Engine</button>
+        </div>
+
+        <!-- Stats -->
+        <div class="glass p-5">
+          <h3 class="font-syne font-bold text-sm mb-3 text-white">Engine Stats</h3>
+          <div class="grid grid-cols-2 gap-3 text-center">
+            <div class="bg-white/3 rounded-lg p-3">
+              <div class="font-mono text-cyan-400 text-xl font-bold" id="stat-items">0</div>
+              <div class="text-xs text-gray-500">Items</div>
+            </div>
+            <div class="bg-white/3 rounded-lg p-3">
+              <div class="font-mono text-purple-400 text-xl font-bold" id="stat-ops">0</div>
+              <div class="text-xs text-gray-500">Operations</div>
+            </div>
+            <div class="bg-white/3 rounded-lg p-3">
+              <div class="font-mono text-pink-400 text-xl font-bold" id="stat-height">0</div>
+              <div class="text-xs text-gray-500">Heap Height</div>
+            </div>
+            <div class="bg-white/3 rounded-lg p-3">
+              <div class="font-mono text-green-400 text-xl font-bold" id="stat-time">0ms</div>
+              <div class="text-xs text-gray-500">Last Op</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Heap Visualization -->
+      <div class="flex flex-col gap-4">
+        <!-- View toggle -->
+        <div class="glass p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-syne font-bold text-sm text-white">Max Heap Visualization</h3>
+            <div class="flex gap-1 bg-white/5 rounded-lg p-1">
+              <button id="tree-btn" onclick="setView('tree')" class="px-3 py-1 text-xs rounded-md bg-cyan-500/20 text-cyan-400 font-mono transition-all">Tree</button>
+              <button id="array-btn" onclick="setView('array')" class="px-3 py-1 text-xs rounded-md text-gray-500 font-mono transition-all">Array</button>
+            </div>
+          </div>
+          <!-- Tree View -->
+          <div id="tree-view">
+            <svg id="heap-tree-svg" viewBox="0 0 320 220" class="w-full" style="min-height:180px">
+              <text x="160" y="110" fill="#334155" font-size="12" font-family="JetBrains Mono" text-anchor="middle">Add items to see heap</text>
+            </svg>
+          </div>
+          <!-- Array View -->
+          <div id="array-view" class="hidden">
+            <div class="text-xs font-mono text-gray-500 mb-2">Heap array (index 0 = root):</div>
+            <div id="heap-array-view" class="flex flex-wrap gap-1"></div>
+          </div>
+        </div>
+
+        <!-- Frequency Index -->
+        <div class="glass p-5 flex-1">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-syne font-bold text-sm text-white">Frequency Index</h3>
+            <input id="freq-search" type="text" placeholder="Search..." class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white placeholder-gray-600 outline-none w-24 focus:border-purple-500/50" oninput="filterFreqTable(this.value)"/>
+          </div>
+          <div id="freq-table" class="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+            <div class="text-xs text-gray-600 font-mono">No data yet...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top-K Results -->
+      <div class="glass p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-syne font-bold text-sm text-white">🏆 Top-K Recommendations</h3>
+          <span class="font-mono text-xs text-cyan-400 bg-cyan-400/10 px-2 py-1 rounded">K = <span id="topk-k">5</span></span>
+        </div>
+        <div id="topk-list" class="flex flex-col gap-2">
+          <div class="text-xs text-gray-600 font-mono">Run the engine to see results...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PERFORMANCE -->
+<section id="performance" class="py-24 px-4 relative">
+  <div class="absolute inset-0 bg-gradient-to-b from-transparent via-purple-900/5 to-transparent pointer-events-none"></div>
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="font-mono text-xs text-purple-400 tracking-widest">06 — PERFORMANCE</span>
+      <h2 class="font-syne font-bold text-3xl md:text-4xl mt-2">Complexity Highlights</h2>
+    </div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+      <div class="glass p-6 text-center reveal" style="transition-delay:0.1s">
+        <div class="stat-num counter" data-target="1">0</div>
+        <div class="text-xs text-gray-500 mt-1">O(1) Frequency Lookup</div>
+        <div class="text-xs font-mono text-cyan-400 mt-2">HashMap-backed</div>
+      </div>
+      <div class="glass p-6 text-center reveal" style="transition-delay:0.2s">
+        <div class="font-syne font-black text-5xl" style="background:linear-gradient(135deg,#a855f7,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent">log N</div>
+        <div class="text-xs text-gray-500 mt-1">Per Heap Operation</div>
+        <div class="text-xs font-mono text-purple-400 mt-2">Insert / Delete / Update</div>
+      </div>
+      <div class="glass p-6 text-center reveal" style="transition-delay:0.3s">
+        <div class="font-syne font-black text-5xl" style="background:linear-gradient(135deg,#f472b6,#00f5ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent">K·logN</div>
+        <div class="text-xs text-gray-500 mt-1">Top-K Extraction</div>
+        <div class="text-xs font-mono text-pink-400 mt-2">Optimal complexity</div>
+      </div>
+      <div class="glass p-6 text-center reveal" style="transition-delay:0.4s">
+        <div class="font-syne font-black text-4xl" style="background:linear-gradient(135deg,#00ff88,#00f5ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent">&lt;1ms</div>
+        <div class="text-xs text-gray-500 mt-1">Query Response</div>
+        <div class="text-xs font-mono text-green-400 mt-2">10K item catalog</div>
+      </div>
+    </div>
+
+    <!-- Comparison table -->
+    <div class="glass p-6 reveal overflow-x-auto">
+      <h3 class="font-syne font-bold text-lg mb-4 text-white">Approach Comparison</h3>
+      <table class="w-full text-sm min-w-[500px]">
+        <thead>
+          <tr class="border-b border-white/10">
+            <th class="text-left py-2 text-gray-400 font-normal font-mono text-xs">Approach</th>
+            <th class="text-center py-2 text-gray-400 font-normal font-mono text-xs">Insert</th>
+            <th class="text-center py-2 text-gray-400 font-normal font-mono text-xs">Top-K Query</th>
+            <th class="text-center py-2 text-gray-400 font-normal font-mono text-xs">Space</th>
+            <th class="text-center py-2 text-gray-400 font-normal font-mono text-xs">Real-Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-white/5 bg-cyan-500/5">
+            <td class="py-3 font-syne font-bold text-cyan-400">Max Heap + FreqIdx ✓</td>
+            <td class="text-center font-mono text-green-400 text-xs">O(log N)</td>
+            <td class="text-center font-mono text-green-400 text-xs">O(K log N)</td>
+            <td class="text-center font-mono text-green-400 text-xs">O(N)</td>
+            <td class="text-center">✅</td>
+          </tr>
+          <tr class="border-b border-white/5">
+            <td class="py-3 text-gray-400">Naive Full Sort</td>
+            <td class="text-center font-mono text-red-400 text-xs">O(N log N)</td>
+            <td class="text-center font-mono text-red-400 text-xs">O(N log N)</td>
+            <td class="text-center font-mono text-yellow-400 text-xs">O(N)</td>
+            <td class="text-center">❌</td>
+          </tr>
+          <tr class="border-b border-white/5">
+            <td class="py-3 text-gray-400">Min Heap (size K)</td>
+            <td class="text-center font-mono text-yellow-400 text-xs">O(log K)</td>
+            <td class="text-center font-mono text-green-400 text-xs">O(K)</td>
+            <td class="text-center font-mono text-green-400 text-xs">O(K)</td>
+            <td class="text-center">⚠️</td>
+          </tr>
+          <tr>
+            <td class="py-3 text-gray-400">SQL ORDER BY LIMIT K</td>
+            <td class="text-center font-mono text-red-400 text-xs">O(1)</td>
+            <td class="text-center font-mono text-red-400 text-xs">O(N log N)</td>
+            <td class="text-center font-mono text-red-400 text-xs">O(N)</td>
+            <td class="text-center">❌</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="border-t border-white/5 py-10 px-4">
+  <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+    <div>
+      <div class="font-syne font-bold text-lg grad-text">Top-K Recommendation Engine</div>
+      <div class="text-xs text-gray-600 mt-1">Priority-Based Retrieval · Max Heap · Frequency Indexing</div>
+    </div>
+    <div class="text-center">
+      <div class="font-mono text-xs text-gray-500">Made as a stunning frontend demo for the research project</div>
+      <div class="font-mono text-xs text-cyan-400/50 mt-1">Built with ❤️ — Silicon Valley vibes guaranteed</div>
+    </div>
+    <div class="flex gap-3">
+      <a href="#" class="btn-ghost text-xs py-2 px-4">📊 View PPT</a>
+      <a href="#demo" class="btn-primary text-xs py-2 px-4">🚀 Live Demo</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ARCH MODAL -->
+<div class="modal-overlay" id="arch-modal" onclick="closeModal()">
+  <div class="glass p-6 max-w-lg w-full mx-4 glow-border" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-syne font-bold text-lg text-white" id="modal-title">Title</h3>
+      <button onclick="closeModal()" class="text-gray-500 hover:text-white transition-colors text-xl leading-none">×</button>
+    </div>
+    <p class="text-gray-400 text-sm mb-4" id="modal-desc">Description</p>
+    <div class="bg-black/50 rounded-xl p-4 font-mono text-xs" id="modal-code"></div>
+    <div class="mt-4 flex gap-2">
+      <div class="text-xs font-mono px-2 py-1 rounded" id="modal-complexity" style="background:rgba(0,245,255,0.1);color:#00f5ff"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== CANVAS HERO =====================
+const canvas = document.getElementById('hero-canvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+let W, H;
+
+function resizeCanvas() {
+  W = canvas.width = canvas.offsetWidth;
+  H = canvas.height = canvas.offsetHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+class Particle {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.vx = (Math.random() - 0.5) * 0.4;
+    this.vy = (Math.random() - 0.5) * 0.4;
+    this.r = Math.random() * 1.5 + 0.5;
+    this.color = Math.random() > 0.5 ? '#00f5ff' : '#a855f7';
+    this.alpha = Math.random() * 0.5 + 0.1;
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    if (this.x < 0 || this.x > W || this.y < 0 || this.y > H) this.reset();
+  }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = this.color;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+for (let i = 0; i < 100; i++) particles.push(new Particle());
+
+function drawConnections() {
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 80) {
+        ctx.save();
+        ctx.globalAlpha = (1 - dist/80) * 0.08;
+        ctx.strokeStyle = '#00f5ff';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+}
+
+function animateCanvas() {
+  ctx.clearRect(0, 0, W, H);
+  // Grid lines
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,245,255,0.02)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.restore();
+  particles.forEach(p => { p.update(); p.draw(); });
+  drawConnections();
+  requestAnimationFrame(animateCanvas);
+}
+animateCanvas();
+
+// ===================== REVEAL ANIMATIONS =====================
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('visible'); }
+  });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal, .reveal-left, .reveal-right').forEach(el => observer.observe(el));
+
+// ===================== NAV MOBILE =====================
+document.getElementById('ham-btn').addEventListener('click', () => {
+  document.getElementById('mobile-menu').classList.toggle('open');
+});
+document.querySelectorAll('#mobile-menu a').forEach(a => {
+  a.addEventListener('click', () => document.getElementById('mobile-menu').classList.remove('open'));
+});
+
+// ===================== MAX HEAP =====================
+class MaxHeap {
+  constructor() { this.heap = []; this.ops = 0; }
+  parent(i) { return Math.floor((i-1)/2); }
+  left(i) { return 2*i+1; }
+  right(i) { return 2*i+2; }
+  swap(a, b) { [this.heap[a], this.heap[b]] = [this.heap[b], this.heap[a]]; this.ops++; }
+
+  insert(item) {
+    this.heap.push(item);
+    this._heapifyUp(this.heap.length - 1);
+    this.ops++;
+  }
+
+  _heapifyUp(i) {
+    while (i > 0 && this.heap[this.parent(i)].score < this.heap[i].score) {
+      this.swap(i, this.parent(i));
+      i = this.parent(i);
+    }
+  }
+
+  extractMax() {
+    if (this.heap.length === 0) return null;
+    const max = this.heap[0];
+    const last = this.heap.pop();
+    if (this.heap.length > 0) { this.heap[0] = last; this._heapifyDown(0); }
+    this.ops++;
+    return max;
+  }
+
+  _heapifyDown(i) {
+    let largest = i;
+    const l = this.left(i), r = this.right(i);
+    if (l < this.heap.length && this.heap[l].score > this.heap[largest].score) largest = l;
+    if (r < this.heap.length && this.heap[r].score > this.heap[largest].score) largest = r;
+    if (largest !== i) { this.swap(i, largest); this._heapifyDown(largest); }
+  }
+
+  peek() { return this.heap[0] || null; }
+  size() { return this.heap.length; }
+  height() { return this.size() > 0 ? Math.floor(Math.log2(this.size())) : 0; }
+
+  getTopK(k) {
+    const clone = new MaxHeap();
+    clone.heap = JSON.parse(JSON.stringify(this.heap));
+    const result = [];
+    for (let i = 0; i < Math.min(k, this.size()); i++) result.push(clone.extractMax());
+    return result;
+  }
+
+  updateScore(name, newScore) {
+    const idx = this.heap.findIndex(x => x.name === name);
+    if (idx === -1) { this.insert({ name, score: newScore }); return; }
+    this.heap[idx].score = newScore;
+    this._heapifyUp(idx);
+    this._heapifyDown(idx);
+    this.ops++;
+  }
+}
+
+// ===================== ENGINE STATE =====================
+let engine = { heap: new MaxHeap(), freqMap: {}, K: 5, totalOps: 0 };
+
+const SAMPLE_ITEMS = [
+  "iPhone 16 Pro","Sony WH-1000XM5","MacBook Air M3","Samsung QLED 4K","AirPods Pro",
+  "Dune: Part Two","Oppenheimer 4K","The Batman","Avatar 3","Interstellar",
+  "Blinding Lights","As It Was","Anti-Hero","Flowers","Unholy",
+  "Nike Air Max","Adidas Ultraboost","New Balance 990","Puma RS-X","Converse Chuck",
+  "The Witcher 4","Elden Ring DLC","Baldur's Gate 3","Cyberpunk 2.1","GTA VI",
+  "Notion AI","Figma Dev","Linear App","Vercel v0","Cursor IDE"
+];
+
+const EMOJIS = {
+  "iPhone":"📱","Sony":"🎧","MacBook":"💻","Samsung":"📺","AirPods":"🎵",
+  "Dune":"🎬","Oppenheimer":"🎥","Batman":"🦇","Avatar":"🌊","Interstellar":"🌌",
+  "Blinding":"🎵","As It":"🎸","Anti":"🎤","Flowers":"🌸","Unholy":"🔥",
+  "Nike":"👟","Adidas":"👟","New Balance":"👟","Puma":"👟","Converse":"👟",
+  "Witcher":"🎮","Elden":"⚔️","Baldur":"🐲","Cyberpunk":"🤖","GTA":"🚗",
+  "Notion":"📝","Figma":"🎨","Linear":"📊","Vercel":"▲","Cursor":"💡"
+};
+
+function getEmoji(name) {
+  for (const [k, v] of Object.entries(EMOJIS)) if (name.startsWith(k)) return v;
+  return '📦';
+}
+
+let currentView = 'tree';
+function setView(v) {
+  currentView = v;
+  document.getElementById('tree-view').classList.toggle('hidden', v !== 'tree');
+  document.getElementById('array-view').classList.toggle('hidden', v !== 'array');
+  document.getElementById('tree-btn').className = v === 'tree' ? 'px-3 py-1 text-xs rounded-md bg-cyan-500/20 text-cyan-400 font-mono transition-all' : 'px-3 py-1 text-xs rounded-md text-gray-500 font-mono transition-all';
+  document.getElementById('array-btn').className = v === 'array' ? 'px-3 py-1 text-xs rounded-md bg-cyan-500/20 text-cyan-400 font-mono transition-all' : 'px-3 py-1 text-xs rounded-md text-gray-500 font-mono transition-all';
+  renderHeap();
+}
+
+function updateK(val) {
+  engine.K = parseInt(val);
+  document.getElementById('k-display').textContent = val;
+  document.getElementById('k-label').textContent = val;
+  document.getElementById('topk-k').textContent = val;
+  renderTopK();
+}
+
+function addToEngine(name, score) {
+  const t = performance.now();
+  engine.freqMap[name] = (engine.freqMap[name] || 0) + score;
+  engine.heap.updateScore(name, engine.freqMap[name]);
+  engine.totalOps++;
+  const elapsed = (performance.now() - t).toFixed(2);
+  updateStats(elapsed);
+  renderAll();
+}
+
+function addCustomItem() {
+  const name = document.getElementById('custom-item').value.trim();
+  const scoreRaw = parseFloat(document.getElementById('custom-score').value);
+  if (!name) return;
+  const score = isNaN(scoreRaw) ? Math.floor(Math.random()*60+20) : Math.min(100, Math.max(1, scoreRaw));
+  addToEngine(name, score);
+  document.getElementById('custom-item').value = '';
+  document.getElementById('custom-score').value = '';
+}
+
+function ingestRandom() {
+  const count = Math.floor(Math.random() * 4) + 3;
+  const pool = SAMPLE_ITEMS.filter(s => !engine.freqMap[s]);
+  const toAdd = pool.length > 0 ? pool.sort(() => Math.random()-0.5).slice(0, Math.min(count, pool.length)) : SAMPLE_ITEMS.sort(() => Math.random()-0.5).slice(0, count);
+  toAdd.forEach((name, i) => {
+    setTimeout(() => addToEngine(name, Math.floor(Math.random()*80+10)), i * 150);
+  });
+}
+
+function updateFrequencies() {
+  const keys = Object.keys(engine.freqMap);
+  if (keys.length === 0) { ingestRandom(); return; }
+  const toUpdate = keys.sort(() => Math.random()-0.5).slice(0, Math.min(5, keys.length));
+  toUpdate.forEach((name, i) => {
+    setTimeout(() => addToEngine(name, Math.floor(Math.random()*25+5)), i * 120);
+  });
+}
+
+function resetEngine() {
+  engine.heap = new MaxHeap();
+  engine.freqMap = {};
+  engine.totalOps = 0;
+  updateStats('0');
+  renderAll();
+}
+
+function updateStats(elapsed) {
+  document.getElementById('stat-items').textContent = engine.heap.size();
+  document.getElementById('stat-ops').textContent = engine.heap.ops;
+  document.getElementById('stat-height').textContent = engine.heap.height();
+  document.getElementById('stat-time').textContent = elapsed + 'ms';
+}
+
+function renderAll() { renderHeap(); renderFreqTable(); renderTopK(); }
+
+// ============ HEAP TREE RENDERER ============
+function renderHeap() {
+  if (currentView === 'tree') renderHeapTree();
+  else renderHeapArray();
+}
+
+function renderHeapTree() {
+  const svg = document.getElementById('heap-tree-svg');
+  const h = engine.heap.heap;
+  svg.innerHTML = '';
+  if (h.length === 0) {
+    svg.innerHTML = '<text x="160" y="110" fill="#334155" font-size="12" font-family="JetBrains Mono" text-anchor="middle">Add items to see heap</text>';
+    return;
+  }
+
+  const positions = [];
+  const maxNodes = Math.min(h.length, 15);
+  const levels = Math.floor(Math.log2(maxNodes)) + 1;
+  const svgW = 320, svgH = 220;
+  const levelH = svgH / (levels + 1);
+
+  function getPos(i) {
+    const level = Math.floor(Math.log2(i + 1));
+    const posInLevel = i - (Math.pow(2, level) - 1);
+    const totalInLevel = Math.pow(2, level);
+    const x = (svgW / (totalInLevel + 1)) * (posInLevel + 1);
+    const y = levelH * (level + 1);
+    return { x, y };
+  }
+
+  for (let i = 0; i < maxNodes; i++) positions[i] = getPos(i);
+
+  // Draw edges
+  for (let i = 1; i < maxNodes; i++) {
+    const p = Math.floor((i-1)/2);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', positions[p].x); line.setAttribute('y1', positions[p].y);
+    line.setAttribute('x2', positions[i].x); line.setAttribute('y2', positions[i].y);
+    line.setAttribute('stroke', 'rgba(100,116,139,0.3)'); line.setAttribute('stroke-width', '1.5');
+    svg.appendChild(line);
+  }
+
+  // Draw nodes
+  const maxScore = Math.max(...h.map(x => x.score));
+  for (let i = 0; i < maxNodes; i++) {
+    const { x, y } = positions[i];
+    const ratio = h[i].score / maxScore;
+    const color = i === 0 ? '#00f5ff' : ratio > 0.7 ? '#a855f7' : ratio > 0.4 ? '#f472b6' : '#64748b';
+    const r = i === 0 ? 22 : 18;
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circle.setAttribute('cx', x); circle.setAttribute('cy', y); circle.setAttribute('r', r);
+    circle.setAttribute('fill', `rgba(${i===0?'0,245,255':'168,85,247'},${i===0?0.2:0.1})`);
+    circle.setAttribute('stroke', color); circle.setAttribute('stroke-width', i===0?2:1.5);
+    if (i === 0) { circle.setAttribute('filter','drop-shadow(0 0 6px '+color+')'); }
+    svg.appendChild(circle);
+
+    const name = h[i].name.split(' ')[0].slice(0, 6);
+    const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x', x); txt.setAttribute('y', y - 3);
+    txt.setAttribute('fill', color); txt.setAttribute('font-size', i===0?8:7);
+    txt.setAttribute('font-family', 'JetBrains Mono'); txt.setAttribute('text-anchor', 'middle');
+    txt.textContent = name;
+    svg.appendChild(txt);
+
+    const score = document.createElementNS('http://www.w3.org/2000/svg','text');
+    score.setAttribute('x', x); score.setAttribute('y', y + 9);
+    score.setAttribute('fill', color); score.setAttribute('font-size', i===0?9:8);
+    score.setAttribute('font-family', 'JetBrains Mono'); score.setAttribute('text-anchor', 'middle');
+    score.setAttribute('font-weight', '700');
+    score.textContent = Math.round(h[i].score);
+    svg.appendChild(score);
+  }
+
+  if (h.length > 15) {
+    const more = document.createElementNS('http://www.w3.org/2000/svg','text');
+    more.setAttribute('x', 160); more.setAttribute('y', 210);
+    more.setAttribute('fill', '#334155'); more.setAttribute('font-size', 9);
+    more.setAttribute('font-family', 'JetBrains Mono'); more.setAttribute('text-anchor', 'middle');
+    more.textContent = `+${h.length-15} more nodes (showing first 15)`;
+    svg.appendChild(more);
+  }
+}
+
+function renderHeapArray() {
+  const h = engine.heap.heap;
+  const container = document.getElementById('heap-array-view');
+  container.innerHTML = '';
+  if (h.length === 0) { container.innerHTML = '<span class="text-xs text-gray-600 font-mono">Empty</span>'; return; }
+  const show = h.slice(0, 20);
+  show.forEach((item, i) => {
+    const cell = document.createElement('div');
+    cell.className = `heap-cell ${i===0?'active':''}`;
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'text-xs font-mono'; nameSpan.style.color = i===0?'#00f5ff':'#a855f7';
+    nameSpan.textContent = item.name.split(' ')[0].slice(0,6);
+    const scoreSpan = document.createElement('span');
+    scoreSpan.className = 'font-mono font-bold'; scoreSpan.style.fontSize='10px';
+    scoreSpan.style.color = i===0?'#00f5ff':'#64748b';
+    scoreSpan.textContent = Math.round(item.score);
+    const idxSpan = document.createElement('span');
+    idxSpan.style.fontSize='8px'; idxSpan.style.color='#334155';
+    idxSpan.textContent = `[${i}]`;
+    cell.appendChild(idxSpan); cell.appendChild(nameSpan); cell.appendChild(scoreSpan);
+    container.appendChild(cell);
+  });
+  if (h.length > 20) {
+    const more = document.createElement('span');
+    more.className = 'text-xs text-gray-600 font-mono self-center ml-1';
+    more.textContent = `+${h.length-20}`;
+    container.appendChild(more);
+  }
+}
+
+// ============ FREQ TABLE ============
+let freqFilter = '';
+function filterFreqTable(v) { freqFilter = v.toLowerCase(); renderFreqTable(); }
+
+function renderFreqTable() {
+  const container = document.getElementById('freq-table');
+  const entries = Object.entries(engine.freqMap).sort((a,b) => b[1]-a[1]);
+  const filtered = freqFilter ? entries.filter(([k]) => k.toLowerCase().includes(freqFilter)) : entries;
+  if (filtered.length === 0) { container.innerHTML = '<div class="text-xs text-gray-600 font-mono">No items yet...</div>'; return; }
+  const maxScore = Math.max(...entries.map(e=>e[1]));
+  container.innerHTML = '';
+  filtered.slice(0, 20).forEach(([name, score]) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2';
+    const nameEl = document.createElement('span');
+    nameEl.className = 'text-xs text-gray-300 w-28 truncate flex-shrink-0';
+    nameEl.textContent = getEmoji(name) + ' ' + name.split(' ').slice(0,2).join(' ');
+    const barWrap = document.createElement('div');
+    barWrap.className = 'flex-1 bg-white/5 rounded-full overflow-hidden h-2';
+    const bar = document.createElement('div');
+    bar.className = 'freq-bar h-2 rounded-full';
+    bar.style.width = (score/maxScore*100)+'%';
+    bar.style.background = `linear-gradient(90deg, #a855f7, #00f5ff)`;
+    barWrap.appendChild(bar);
+    const scoreEl = document.createElement('span');
+    scoreEl.className = 'text-xs font-mono text-purple-400 w-10 text-right flex-shrink-0';
+    scoreEl.textContent = Math.round(score);
+    row.appendChild(nameEl); row.appendChild(barWrap); row.appendChild(scoreEl);
+    container.appendChild(row);
+  });
+}
+
+// ============ TOP-K RESULTS ============
+const RANK_COLORS = ['#00f5ff','#a855f7','#f472b6','#00ff88','#fb923c','#facc15','#38bdf8','#a3e635','#f87171','#c084fc'];
+
+function renderTopK() {
+  const container = document.getElementById('topk-list');
+  const topK = engine.heap.getTopK(engine.K);
+  if (topK.length === 0) { container.innerHTML = '<div class="text-xs text-gray-600 font-mono">Run the engine to see results...</div>'; return; }
+  const maxScore = topK[0]?.score || 1;
+  container.innerHTML = '';
+  topK.forEach((item, i) => {
+    const card = document.createElement('div');
+    card.className = 'topk-card flex items-center gap-3 p-3 rounded-xl border';
+    card.style.background = `rgba(${i===0?'0,245,255':'168,85,247'},0.05)`;
+    card.style.borderColor = `${RANK_COLORS[i] || '#334155'}30`;
+    card.style.animationDelay = `${i*0.05}s`;
+
+    const rank = document.createElement('div');
+    rank.className = 'w-7 h-7 rounded-full flex items-center justify-center font-syne font-bold text-xs flex-shrink-0';
+    rank.style.background = `${RANK_COLORS[i] || '#334155'}20`;
+    rank.style.color = RANK_COLORS[i] || '#64748b';
+    rank.style.border = `1px solid ${RANK_COLORS[i] || '#334155'}40`;
+    rank.textContent = `#${i+1}`;
+
+    const emoji = document.createElement('span'); emoji.textContent = getEmoji(item.name); emoji.style.fontSize = '16px';
+
+    const info = document.createElement('div'); info.className = 'flex-1 min-w-0';
+    const name = document.createElement('div');
+    name.className = 'text-sm font-medium text-white truncate'; name.textContent = item.name;
+    const scoreBar = document.createElement('div'); scoreBar.className = 'mt-1 bg-white/5 rounded-full h-1.5 overflow-hidden';
+    const fill = document.createElement('div');
+    fill.className = 'freq-bar h-1.5 rounded-full';
+    fill.style.width = (item.score/maxScore*100)+'%';
+    fill.style.background = `linear-gradient(90deg,${RANK_COLORS[i]||'#64748b'},${RANK_COLORS[i]||'#64748b'}88)`;
+    scoreBar.appendChild(fill);
+    info.appendChild(name); info.appendChild(scoreBar);
+
+    const scoreEl = document.createElement('div');
+    scoreEl.className = 'text-right flex-shrink-0';
+    const sv = document.createElement('div'); sv.className = 'font-mono font-bold text-sm'; sv.style.color = RANK_COLORS[i]||'#64748b'; sv.textContent = Math.round(item.score);
+    const why = document.createElement('div'); why.className = 'text-xs text-gray-600'; why.textContent = 'score';
+    scoreEl.appendChild(sv); scoreEl.appendChild(why);
+
+    card.appendChild(rank); card.appendChild(emoji); card.appendChild(info); card.appendChild(scoreEl);
+    container.appendChild(card);
+  });
+}
+
+// ============ ARCHITECTURE MODAL ============
+const modalData = {
+  ingestion: {
+    title: '📥 Data Ingestion & Preprocessing',
+    desc: 'The entry point of the pipeline. Raw user interaction events are streamed in real-time. Each event is parsed and validated before being passed to the Frequency Index. Supports batch and streaming ingestion modes.',
+    code: `// Event schema
+interface Event {
+  item_id: string;
+  user_id: string;
+  weight: number;    // interaction strength
+  timestamp: number;
+}
+
+// Stream handler
+function processEvent(event: Event) {
+  const score = event.weight * timeDecay(event.timestamp);
+  frequencyIndex.update(event.item_id, score);
+}`,
+    complexity: 'O(1) per event — constant time processing'
+  },
+  frequency: {
+    title: '🗂️ Frequency Index',
+    desc: 'A HashMap-backed data structure maintaining cumulative weighted frequency scores per item. Each lookup or update is O(1), making it the fastest component in the pipeline. Scores decay over time to reflect recency.',
+    code: `class FrequencyIndex {
+  private map = new Map<string, number>();
+  
+  update(itemId: string, delta: number): void {
+    const cur = this.map.get(itemId) ?? 0;
+    this.map.set(itemId, cur + delta);
+  }
+  
+  get(itemId: string): number {
+    return this.map.get(itemId) ?? 0;  // O(1)
+  }
+  
+  getAll(): [string, number][] {
+    return [...this.map.entries()];
+  }
+}`,
+    complexity: 'O(1) read/write — HashMap constant time'
+  },
+  maxheap: {
+    title: '🔺 Max Heap',
+    desc: 'The core data structure. Maintains items ordered by their frequency score. The root is always the highest-priority item. Heapify maintains the heap property in O(log N) after each update.',
+    code: `class MaxHeap {
+  private heap: Item[] = [];
+
+  insert(item: Item): void {
+    this.heap.push(item);
+    this.heapifyUp(this.heap.length - 1);
+    // O(log N)
+  }
+
+  extractMax(): Item | null {
+    const max = this.heap[0];
+    const last = this.heap.pop()!;
+    if (this.heap.length) {
+      this.heap[0] = last;
+      this.heapifyDown(0);
+    }
+    return max; // O(log N)
+  }
+
+  private heapifyUp(i: number): void {
+    while (i > 0) {
+      const p = Math.floor((i - 1) / 2);
+      if (this.heap[p].score >= this.heap[i].score) break;
+      [this.heap[p], this.heap[i]] = [this.heap[i], this.heap[p]];
+      i = p;
+    }
+  }
+}`,
+    complexity: 'O(log N) insert/delete, O(1) peek max'
+  },
+  topk: {
+    title: '🏆 Top-K Retrieval',
+    desc: 'Extract the K highest-priority items by repeatedly calling extractMax() on a clone of the heap. Total complexity is O(K log N). Results are returned as a ranked list with scores for frontend rendering.',
+    code: `function getTopK(heap: MaxHeap, k: number): Item[] {
+  // Clone to preserve original heap
+  const clone = heap.clone();
+  const result: Item[] = [];
+  
+  for (let i = 0; i < k; i++) {
+    const item = clone.extractMax();
+    if (!item) break;
+    result.push(item);
+    // Each extraction: O(log N)
+  }
+  
+  return result;
+  // Total: O(K log N)
+}
+
+// Usage
+const topRecommendations = getTopK(mainHeap, 10);`,
+    complexity: 'O(K log N) total — optimal for Top-K extraction'
+  }
+};
+
+function showArchModal(key) {
+  const data = modalData[key];
+  document.getElementById('modal-title').textContent = data.title;
+  document.getElementById('modal-desc').textContent = data.desc;
+  document.getElementById('modal-code').innerHTML = `<pre style="color:#00f5ff;font-size:11px;white-space:pre-wrap;line-height:1.5">${data.code}</pre>`;
+  document.getElementById('modal-complexity').textContent = data.complexity;
+  document.getElementById('arch-modal').classList.add('open');
+}
+function closeModal() { document.getElementById('arch-modal').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ============ STAT COUNTER ============
+const counterObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const el = e.target;
+      const target = parseInt(el.dataset.target);
+      let cur = 0;
+      const step = Math.max(1, Math.floor(target / 60));
+      const timer = setInterval(() => {
+        cur = Math.min(cur + step, target);
+        el.textContent = cur;
+        if (cur >= target) clearInterval(timer);
+      }, 16);
+      counterObs.unobserve(el);
+    }
+  });
+}, { threshold: 0.5 });
+document.querySelectorAll('.counter').forEach(el => counterObs.observe(el));
+
+// ============ AUTO BOOT ============
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    const seedItems = [
+      ["iPhone 16 Pro", 87], ["Sony WH-1000XM5", 74], ["MacBook Air M3", 68],
+      ["Dune: Part Two", 91], ["AirPods Pro", 63], ["Elden Ring DLC", 55],
+      ["Blinding Lights", 48], ["Nike Air Max", 52], ["Notion AI", 44], ["Figma Dev", 39]
+    ];
+    seedItems.forEach(([name, score], i) => {
+      setTimeout(() => addToEngine(name, score), i * 100);
+    });
+  }, 600);
+});
+</script>
+</body>
+</html>
